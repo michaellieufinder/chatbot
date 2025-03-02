@@ -1,37 +1,58 @@
 import streamlit as st
-from google.oauth2 import id_token
-from google.auth.transport import requests
-import gspread
-from google.auth import default, exceptions
-import json
+import base64
+import requests
 
-# Google OAuth Client ID (Replace with your actual Client ID from Google Cloud)
-GOOGLE_CLIENT_ID = "985468613077-fe816bfledrbp976rr9dr1me82qc89g9.apps.googleusercontent.com"
+# Streamlit App Title
+st.title("Google Ads API Authentication")
 
-st.title("Google One Tap Login with Streamlit")
+# Initialize login state
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-# Session state for login
-if "user" not in st.session_state:
-    st.session_state.user = None
+# Fake Login Button
+if not st.session_state.logged_in:
+    if st.button("Log In"):
+        st.session_state.logged_in = True
+        st.success("You are now logged in!")
 
-# Display One Tap Login Button
-login_button = st.button("Login with Google")
+# Only run authentication after login
+if st.session_state.logged_in:
+    st.subheader("Fetching Access Token...")
 
-if login_button:
-    # Google One Tap Login
-    auth_url = f"https://accounts.google.com/o/oauth2/auth?client_id={GOOGLE_CLIENT_ID}&redirect_uri=http://localhost:8501&response_type=token&scope=email%20profile%20https://www.googleapis.com/auth/spreadsheets.readonly"
-    st.markdown(f"[Click here to log in with Google]({auth_url})")
+    # Retrieve secrets from Streamlit Secrets
+    client_id = st.secrets["google_ads"]["client_id"]
+    client_secret = st.secrets["google_ads"]["client_secret"]
+    clientCustomerID = st.secrets["google_ads"]["clientCustomerID"]
+    developer_token = st.secrets["google_ads"]["developer_token"]
+    refresh_token = st.secrets["google_ads"]["refresh_token"]
 
-# If the user is logged in, fetch data from Google Sheets
-if st.session_state.user:
-    st.success(f"Welcome {st.session_state.user['name']}")
+    # Encode client credentials
+    encoded = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8"))
 
-    # Authenticate with Google Sheets
-    creds, _ = default()
-    client = gspread.authorize(creds)
+    # Prepare request headers
+    headers = {
+        'Authorization': f'Basic {encoded.decode("utf-8")}',
+        'Content-Type': 'application/x-www-form-urlencoded'
+    }
 
-    SHEET_URL = "https://docs.google.com/spreadsheets/d/1fPCnFNmR89giapLRTy1NLMaQaBSGetNRmm13iEfRzcg/edit?gid=0"
-    sheet = client.open_by_url(SHEET_URL).sheet1
-    data = sheet.get_all_records()
-    
-    st.dataframe(data)
+    # Prepare request data
+    data = {
+        'grant_type': 'refresh_token',
+        'redirect_uri': "https://www.finder.com.au/",
+        'refresh_token': refresh_token
+    }
+
+    # Request access token
+    with st.spinner("Requesting access token..."):
+        response = requests.post('https://www.googleapis.com/oauth2/v3/token', headers=headers, data=data)
+        response_data = response.json()
+
+    # Extract access token
+    access_token = response_data.get('access_token')
+
+    if access_token:
+        st.success("Access Token Generated Successfully!")
+        st.code(access_token, language="plaintext")
+    else:
+        st.error("Failed to generate access token. Check credentials.")
+
