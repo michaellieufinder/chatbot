@@ -1,56 +1,37 @@
 import streamlit as st
-from openai import OpenAI
+from google.oauth2 import id_token
+from google.auth.transport import requests
+import gspread
+from google.auth import default, exceptions
+import json
 
-# Show title and description.
-st.title("💬 Chatbot")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
-)
+# Google OAuth Client ID (Replace with your actual Client ID from Google Cloud)
+GOOGLE_CLIENT_ID = "985468613077-fe816bfledrbp976rr9dr1me82qc89g9.apps.googleusercontent.com"
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+st.title("Google One Tap Login with Streamlit")
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+# Session state for login
+if "user" not in st.session_state:
+    st.session_state.user = None
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+# Display One Tap Login Button
+login_button = st.button("Login with Google")
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+if login_button:
+    # Google One Tap Login
+    auth_url = f"https://accounts.google.com/o/oauth2/auth?client_id={GOOGLE_CLIENT_ID}&redirect_uri=http://localhost:8501&response_type=token&scope=email%20profile%20https://www.googleapis.com/auth/spreadsheets.readonly"
+    st.markdown(f"[Click here to log in with Google]({auth_url})")
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
+# If the user is logged in, fetch data from Google Sheets
+if st.session_state.user:
+    st.success(f"Welcome {st.session_state.user['name']}")
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+    # Authenticate with Google Sheets
+    creds, _ = default()
+    client = gspread.authorize(creds)
 
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
-        )
-
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+    SHEET_URL = "https://docs.google.com/spreadsheets/d/1fPCnFNmR89giapLRTy1NLMaQaBSGetNRmm13iEfRzcg/edit?gid=0"
+    sheet = client.open_by_url(SHEET_URL).sheet1
+    data = sheet.get_all_records()
+    
+    st.dataframe(data)
